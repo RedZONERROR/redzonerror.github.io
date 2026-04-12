@@ -1,0 +1,47 @@
+name: Update Repository Stats
+
+on:
+  schedule:
+    # Run daily at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  update-stats:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Fetch GitHub Stats
+        env:
+          GITHUB_TOKEN_FOR_STATS: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        run: |
+          # Fetch user data with authentication
+          USER_DATA=$(curl -s -H "Authorization: token $GITHUB_TOKEN_FOR_STATS" \
+            https://api.github.com/user)
+          
+          # Extract counts
+          PUBLIC_REPOS=$(echo "$USER_DATA" | jq '.public_repos')
+          PRIVATE_REPOS=$(echo "$USER_DATA" | jq '.total_private_repos')
+          
+          # Create stats JSON file
+          cat > docs/stats.json << EOF
+          {
+            "publicRepos": $PUBLIC_REPOS,
+            "privateRepos": $PRIVATE_REPOS,
+            "lastUpdated": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          }
+          EOF
+          
+          echo "Stats updated: Public=$PUBLIC_REPOS, Private=$PRIVATE_REPOS"
+      
+      - name: Commit and push if changed
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add docs/stats.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update repository stats [skip ci]" && git push)
